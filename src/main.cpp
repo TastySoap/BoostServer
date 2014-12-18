@@ -181,9 +181,9 @@ int main(){
 			boost::asio::ip::tcp::endpoint server_endpoint(
 				boost::asio::ip::address_v4::loopback(), port);
 
-			// Create and connect 10k clients to the server.
+			// Create and connect 100 clients to the server.
 			std::vector<std::shared_ptr<TcpSocket>> clients;
-			for (auto i = 0; i < 10000; ++i)
+			for (auto i = 0; i < 100; ++i)
 			{
 				auto client = std::make_shared<TcpSocket>(
 					std::ref(ioService));
@@ -206,6 +206,13 @@ int main(){
 		timeout.join();
 	}
 	catch(std::exception &e){
-		std::cerr << "Exception: " << e.what() << std::endl;
+		std::cerr << "Std exception: " << e.what() << std::endl;
 	}
+	catch(boost::system::system_error &e){
+		std::cerr << "Boost exception:" << e.what() << std::endl;
+	}
+	catch (...){
+		std::cerr << "Unknown error!" << std::endl;
+	}
+	return 0;
 }
