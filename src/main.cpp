@@ -2,9 +2,12 @@
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
 #include <boost/signals2.hpp>
+#include <boost/thread.hpp>
 
 #include <vector>
 #include <unordered_set>
+#include <utility>
+#include <memory>
 
 using TcpSocket = boost::asio::ip::tcp::socket;
 using SslSocket = boost::asio::ssl::stream<TcpSocket>;
@@ -20,7 +23,7 @@ public:
 	using Pointer     = std::shared_ptr<Session>;
 	using EndedSignal = boost::signals2::signal<void(Pointer, boost::system::error_code)>;
 
-	Session(TcpSocket);
+	explicit Session(TcpSocket &&);
 	virtual ~Session();
 
 	auto addEndedSignal(const EndedSignal::slot_type &) const -> Signals2Connection;
@@ -39,7 +42,7 @@ protected:
 	boost::system::error_code _errorCode;
 };
 
-Session::Session(TcpSocket tcpSocket)
+Session::Session(TcpSocket &&tcpSocket)
 	:_socket(std::move(tcpSocket)){}
 Session::~Session(){}
 auto Session::addEndedSignal(const EndedSignal::slot_type &slot) const -> Signals2Connection{
@@ -79,8 +82,9 @@ public:
 	Server(boost::asio::io_service &, const EndPoint &);
 	virtual ~Server();
 	auto start() -> void;
-private:
+protected:
 	virtual auto startAcceptingSessions() -> void;
+	virtual auto makeNewSession(TcpSocket &&) -> Session::Pointer;
 	virtual auto handleNewSession(Session::Pointer) -> void;
 	virtual auto onSessionEnd(Session::Pointer, boost::system::error_code) -> void;
 protected:
@@ -103,26 +107,105 @@ auto Server::startAcceptingSessions() -> void{
 	_acceptor.async_accept(
 		_socket,
 		[this](boost::system::error_code ec){
-			if(!ec) handleNewSession(std::make_shared<Session>(std::move(_socket)));
+			if(!ec) handleNewSession(makeNewSession(std::move(_socket)));
 			startAcceptingSessions();
 		}
 	);
 }
-
-#pragma warning(push)
-#pragma warning(disable:4996)
+auto Server::makeNewSession(TcpSocket &&socket) -> Session::Pointer{
+	return std::make_shared<Session>(std::move(socket));
+}
 auto Server::handleNewSession(Session::Pointer sp) -> void{
 	_sessions.insert(sp);
 	sp->addEndedSignal(boost::bind(&Server::onSessionEnd, this, _1, _2));
 	sp->start();
 }
-#pragma warning(pop)
+
 auto Server::onSessionEnd(Session::Pointer sessionPtr, boost::system::error_code ec) -> void{
 	_sessions.erase(sessionPtr);
 }
 
+class LoggingSession: public Session{
+public:
+	explicit LoggingSession(TcpSocket &&);
+	virtual ~LoggingSession() override;
+};
 
+LoggingSession::LoggingSession(TcpSocket &&socket): Session(std::move(socket)){
+	std::clog << __FUNCTION__ << std::endl;
+}
+LoggingSession::~LoggingSession(){
+	std::clog << __FUNCTION__ << std::endl;
+}
+
+class LoggingServer: public Server{
+public:
+	explicit LoggingServer(boost::asio::io_service &, const EndPoint &);
+	virtual ~LoggingServer() override;
+	
+	virtual auto makeNewSession(TcpSocket &&) -> Session::Pointer override;
+	virtual auto handleNewSession(Session::Pointer) -> void override;
+	virtual auto onSessionEnd(Session::Pointer, boost::system::error_code) -> void override;
+};
+
+LoggingServer::LoggingServer(boost::asio::io_service &ioService, const EndPoint &endPoint):
+	Server(ioService, endPoint)
+{
+	std::clog << __FUNCTION__ << std::endl;
+}
+LoggingServer::~LoggingServer(){
+	std::clog << __FUNCTION__ << std::endl;
+}
+auto LoggingServer::makeNewSession(TcpSocket &&socket) -> Session::Pointer{
+	std::clog << __FUNCTION__ << std::endl;
+	return std::make_shared<LoggingSession>(std::move(socket));
+}
+auto LoggingServer::handleNewSession(Session::Pointer sessionPtr) -> void{
+	std::clog << __FUNCTION__ << std::endl;
+	Server::handleNewSession(sessionPtr);
+}
+auto LoggingServer::onSessionEnd(Session::Pointer sessionPtr, boost::system::error_code errorCode) -> void{
+	std::clog << __FUNCTION__ << std::endl;
+	Server::onSessionEnd(sessionPtr, errorCode);
+}
 
 int main(){
+	try{
+		auto ioService = boost::asio::io_service();
+		auto port = 1337;
+		auto endPoint = EndPoint(boost::asio::ip::tcp::v4(), port);
+		auto server = LoggingServer(ioService, endPoint);
+		server.start();
 
+		boost::thread client_main([&server, &ioService, port]{
+			boost::asio::ip::tcp::endpoint server_endpoint(
+				boost::asio::ip::address_v4::loopback(), port);
+
+			// Create and connect 10k clients to the server.
+			std::vector<std::shared_ptr<TcpSocket>> clients;
+			for (auto i = 0; i < 10000; ++i)
+			{
+				auto client = std::make_shared<TcpSocket>(
+					std::ref(ioService));
+				client->connect(server_endpoint);
+				clients.push_back(client);
+			}
+
+			// Wait 2 seconds before destroying all clients.
+			boost::this_thread::sleep(boost::posix_time::seconds(1));
+			clients.clear();
+		});
+
+		boost::thread timeout([&ioService]{
+			boost::this_thread::sleep(boost::posix_time::seconds(2));
+			ioService.stop();
+		});
+
+		ioService.run();
+		client_main.join();
+		timeout.join();
+	}
+	catch(std::exception &e){
+		std::cerr << "Exception: " << e.what() << std::endl;
+	}
 }
