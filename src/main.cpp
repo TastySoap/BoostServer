@@ -196,8 +196,8 @@ int main(){
 			clients.clear();
 		});
 
-		boost::thread timeout([&ioService]{
-			boost::this_thread::sleep(boost::posix_time::seconds(2));
+		boost::thread timeout([&ioService, &client_main]{
+			client_main.join();
 			ioService.stop();
 		});
 
