@@ -68,7 +68,7 @@ auto Session::write() -> void{
 	boost::asio::async_write(
 		_socket, boost::asio::buffer(_buffer),
 		[this, self](boost::system::error_code ec, std::size_t){
-			ec ? end(ec) : read();
+			ec? end(ec) : read();
 		}
 	);
 }
