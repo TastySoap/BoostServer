@@ -200,6 +200,7 @@ int main(){
 				clients.push_back(client);
 			}
 		};
+		
 		boost::thread_group group;
 		std::vector<boost::thread> threads;
 		for(size_t i = 0; i < 100; ++i){
@@ -207,15 +208,12 @@ int main(){
 			group.add_thread(&threads.back());
 		}
 
-		boost::thread client_main(action);
-
 		boost::thread timeout([&ioService, &group]{
 			group.join_all();
 			ioService.stop();
 		});
 
 		ioService.run();
-		client_main.join();
 		timeout.join();
 	}
 	catch(std::exception &e){
