@@ -3,12 +3,23 @@
 #include "Server.hpp"
 #include "LoggingSession.hpp"
 
-class LoggingServer : public Server{
+template<typename Session, typename Database>
+class LoggingServer: public Server<Session, Database>{
 public:
-	explicit LoggingServer(boost::asio::io_service &, const EndPoint &);
-	virtual ~LoggingServer() override;
+	explicit LoggingServer(boost::asio::io_service &ioService, const EndPoint &endPoint): 
+		Server<Session, Database>(ioService, endPoint)
+	{ std::clog << __FUNCTION__ << std::endl; }
 
-	virtual auto makeNewSession(TcpSocket &&)->Session::Pointer override;
-	virtual auto handleNewSession(Session::Pointer) -> void override;
-	virtual auto onSessionEnd(Session::Pointer, boost::system::error_code) -> void override;
+	~LoggingServer()
+	{ std::clog << __FUNCTION__ << std::endl; }
+
+	auto handleNewSession(typename Session::Pointer sessionPtr) -> void override{
+		std::clog << __FUNCTION__ << std::endl;
+		Server::handleNewSession(sessionPtr);
+	}
+
+	auto onSessionEnd(typename Session::Pointer sessionPtr, boost::system::error_code errorCode) -> void override{
+		std::clog << __FUNCTION__ << std::endl;
+		Server::onSessionEnd(sessionPtr, errorCode);
+	}
 };

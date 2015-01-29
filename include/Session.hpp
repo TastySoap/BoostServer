@@ -17,7 +17,7 @@ public:
 	virtual auto end(boost::system::error_code) -> void;
 
 	auto socket() -> const TcpSocket &;
-private:
+protected:
 	virtual auto read() -> void;
 	virtual auto write() -> void;
 protected:
