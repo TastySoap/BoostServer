@@ -1,15 +1,13 @@
 #pragma once
 #include "typedefs.hpp"
 
-#include <unordered_set>
-
 #include "Session.hpp"
 
-template<typename TSession, typename TDatabase>
+template<typename TSessionContainer, typename TDatabase>
 class Server{
 public:
-	using Session = TSession;
-	using SessionContainer = std::unordered_set<typename Session::Pointer>;
+	using SessionContainer = TSessionContainer;
+	using SessionPtr = typename SessionContainer::value_type;
 	using Database = TDatabase;
 public:
 	Server::Server(boost::asio::io_service &ioService, const EndPoint &ep) :
@@ -32,14 +30,15 @@ protected:
 		);
 	}
 
-	virtual auto handleNewSession(typename Session::Pointer sp) -> void{
-		_sessions.insert(sp);
+	virtual auto handleNewSession(SessionPtr sp) -> void{
+		_sessions.push_back(sp);
 		sp->addEndedSignal(boost::bind(&Server::onSessionEnd, this, _1, _2));
 		sp->start();
 	}
 
-	virtual auto onSessionEnd(typename Session::Pointer sp, boost::system::error_code) -> void{
-		_sessions.erase(sp);
+	virtual auto onSessionEnd(SessionPtr sp, boost::system::error_code) -> void{
+		using namespace std;
+		_sessions.erase(find(begin(_sessions), end(_sessions), sp));
 	}
 protected:
 	Acceptor _acceptor;
