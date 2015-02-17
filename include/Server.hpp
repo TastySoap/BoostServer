@@ -3,12 +3,19 @@
 
 #include "Session.hpp"
 
-template<typename TSessionContainer, typename TDatabase>
+template<
+	typename TSessionContainer, 
+	typename TDatabase, 
+	typename TAcceptor = Acceptor, 
+	typename TTcpSocket = TcpSocket
+>
 class Server{
 public:
 	using SessionContainer = TSessionContainer;
 	using SessionPtr = typename SessionContainer::value_type;
 	using Database = TDatabase;
+	using Acceptor = TAcceptor;
+	using TcpSocket = TTcpSocket;
 public:
 	Server::Server(boost::asio::io_service &ioService, const EndPoint &ep) :
 		_acceptor(ioService, ep),
