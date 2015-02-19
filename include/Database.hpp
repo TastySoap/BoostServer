@@ -78,6 +78,7 @@ namespace Postgres{
 					row.push_back(PQgetvalue(_result.get(), y, x));
 				result.push_back(row);
 			}
+			_hasResult = false;
 			return result;
 		}
 	private:
