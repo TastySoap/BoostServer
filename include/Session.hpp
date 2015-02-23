@@ -1,25 +1,54 @@
 #pragma once
 #include "typedefs.hpp"
 
-class Session:
-	public std::enable_shared_from_this<Session>
+template<typename TTcpSocket = TcpSocket>
+class Session final:
+	public std::enable_shared_from_this<Session<TTcpSocket>>
 {
 public:
-	using Pointer = std::shared_ptr<Session>;
+	using TcpSocket = TTcpSocket;
+	using Pointer = std::shared_ptr<Session<TcpSocket>>;
 	using EndedSignal = boost::signals2::signal<void(Pointer, boost::system::error_code)>;
 
-	explicit Session(TcpSocket &&);
-	virtual ~Session();
+	Session<TTcpSocket>(TcpSocket &&tcpSocket):
+		_socket(std::move(tcpSocket))
+	{}
 
-	auto addEndedSignal(const EndedSignal::slot_type &) const->Signals2Connection;
+	auto addEndedSignal(const typename EndedSignal::slot_type &slot) const -> Signals2Connection{
+		return _endedSignal.connect(slot);
+	}
 
-	virtual auto start() -> void;
-	virtual auto end(boost::system::error_code) -> void;
+	auto start() -> void{
+		read();
+	}
 
-	auto socket() -> const TcpSocket &;
-protected:
-	virtual auto read() -> void;
-	virtual auto write() -> void;
+	auto end(boost::system::error_code ec) -> void{
+		/* TODO */
+	}
+
+	auto socket() -> const TcpSocket &{
+		return _socket;
+	}
+
+	auto read() -> void{
+		auto self(shared_from_this());
+		boost::asio::async_read(
+			_socket, boost::asio::buffer(_buffer),
+			[this, self](boost::system::error_code ec, std::size_t){
+				ec? end(ec) : write();
+			}
+		);
+	}
+
+	auto Session::write() -> void{
+		auto self(shared_from_this());
+		boost::asio::async_write(
+			_socket, boost::asio::buffer(_buffer),
+			[this, self](boost::system::error_code ec, std::size_t){
+				ec? end(ec) : read();
+			}
+		);
+	}
 protected:
 	TcpSocket _socket;
 	std::vector<char> _buffer;
