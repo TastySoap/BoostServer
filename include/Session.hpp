@@ -1,22 +1,35 @@
 #pragma once
 #include "typedefs.hpp"
+#include "Packet.hpp"
 
-template<typename TTcpSocket = TcpSocket>
+/* WARNING! SERVER BASED ON PACKETS AND THEIRS BUFFER SEQUENCES IS NOT TESTED, 
+   AND IT'S HIGLY RECCOMENDED TO KEEP THE COMMIT HISTORY!               
+*/
+
+template<class TPacket, class TBuffer> auto
+inline translatePacketToBuffers(TPacket &packet) -> std::vector<TBuffer>{
+	return{
+		boost::asio::buffer(packet.header),
+		boost::asio::buffer(packet.body)
+	};
+}
+
+template<
+	typename TTcpSocket = TcpSocket,
+	typename TPacket = Packet<>
+>
 class Session final:
 	public std::enable_shared_from_this<Session<TTcpSocket>>
 {
 public:
 	using TcpSocket = TTcpSocket;
 	using Pointer = std::shared_ptr<Session<TcpSocket>>;
-	using EndedSignal = boost::signals2::signal<void(Pointer, boost::system::error_code)>;
+	
+	using Packet = TPacket;
 
-	Session<TTcpSocket>(TcpSocket &&tcpSocket):
+	Session<TTcpSocket, TPacket>(TcpSocket &&tcpSocket):
 		_socket(std::move(tcpSocket))
 	{}
-
-	auto addEndedSignal(const typename EndedSignal::slot_type &slot) const -> Signals2Connection{
-		return _endedSignal.connect(slot);
-	}
 
 	auto start() -> void{
 		read();
@@ -32,8 +45,9 @@ public:
 
 	auto read() -> void{
 		auto self(shared_from_this());
+		using buffer_type = boost::asio::mutable_buffer;
 		boost::asio::async_read(
-			_socket, boost::asio::buffer(_buffer),
+			_socket, translatePacketToBuffers<Packet, buffer_type>(_packet),
 			[this, self](boost::system::error_code ec, std::size_t){
 				ec? end(ec) : write();
 			}
@@ -42,8 +56,9 @@ public:
 
 	auto Session::write() -> void{
 		auto self(shared_from_this());
+		using buffer_type = boost::asio::mutable_buffer;
 		boost::asio::async_write(
-			_socket, boost::asio::buffer(_buffer),
+			_socket, translatePacketToBuffers<Packet, buffer_type>(_packet),
 			[this, self](boost::system::error_code ec, std::size_t){
 				ec? end(ec) : read();
 			}
@@ -51,7 +66,6 @@ public:
 	}
 protected:
 	TcpSocket _socket;
-	std::vector<char> _buffer;
-	mutable EndedSignal _endedSignal;
+	Packet _packet;
 	boost::system::error_code _errorCode;
 };
